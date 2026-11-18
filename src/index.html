@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyPlanner — навчальний планувальник</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <p class="eyebrow">STUDYPLANNER</p>
+      <h1>Мої навчальні завдання</h1>
+      <p class="subtitle">Усі дедлайни в одному місці — крок за кроком.</p>
+    </header>
+    <section class="panel">
+      <h2>Додати завдання</h2>
+      <form id="task-form">
+        <label>Назва завдання<input id="title" required maxlength="100" placeholder="Наприклад, лабораторна робота №2"></label>
+        <div class="fields">
+          <label>Предмет<input id="subject" maxlength="60" placeholder="Проєктний практикум"></label>
+          <label>Дедлайн<input id="due" type="date"></label>
+        </div>
+        <button type="submit">Додати завдання</button>
+      </form>
+    </section>
+    <section class="tasks">
+      <div class="list-heading"><h2>Список завдань</h2><span id="counter">0 завдань</span></div>
+      <ul id="task-list"></ul>
+      <p id="empty" class="empty">Поки що завдань немає. Додай перше вище 👆</p>
+    </section>
+    <footer>Навчальний проєкт • Індивідуальна робота</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
