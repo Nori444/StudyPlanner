@@ -1,0 +1,26 @@
+digraph ER {
+  rankdir=TB; fontname="Inter"; nodesep=0.8; ranksep=1.0; pad=0.3;
+  node [fontname="Inter", fontsize=12, shape=plain];
+  edge [fontname="Inter", fontsize=11, color="#3f51b5", arrowhead=none, arrowtail=none, penwidth=1.6];
+
+  subject [label=<
+   <table border="1" cellborder="0" cellspacing="0" cellpadding="6" color="#5265c9">
+     <tr><td bgcolor="#5265c9" colspan="3"><font color="white"><b>Subject  (Предмет)</b></font></td></tr>
+     <tr><td align="left"><b>PK</b></td><td align="left">subject_id</td><td align="left">UUID</td></tr>
+     <tr><td align="left"> </td><td align="left">name</td><td align="left">VARCHAR(60) NOT NULL, UNIQUE</td></tr>
+   </table>>];
+
+  task [label=<
+   <table border="1" cellborder="0" cellspacing="0" cellpadding="6" color="#5265c9">
+     <tr><td bgcolor="#5265c9" colspan="3"><font color="white"><b>Task  (Завдання)</b></font></td></tr>
+     <tr><td align="left"><b>PK</b></td><td align="left">task_id</td><td align="left">UUID</td></tr>
+     <tr><td align="left"><b>FK</b></td><td align="left">subject_id</td><td align="left">UUID NULL → Subject</td></tr>
+     <tr><td align="left"> </td><td align="left">title</td><td align="left">VARCHAR(100) NOT NULL</td></tr>
+     <tr><td align="left"> </td><td align="left">due_date</td><td align="left">DATE NULL (YYYY-MM-DD)</td></tr>
+     <tr><td align="left"> </td><td align="left">status</td><td align="left">NOT NULL: 'todo' | 'done'</td></tr>
+     <tr><td align="left"> </td><td align="left">created_at</td><td align="left">TIMESTAMP (UTC) NOT NULL</td></tr>
+     <tr><td align="left"> </td><td align="left">completed_at</td><td align="left">TIMESTAMP (UTC) NULL</td></tr>
+   </table>>];
+
+  subject -> task [taillabel="1", headlabel="0..N", labeldistance=2.2, label="  «має»  \nON DELETE SET NULL"];
+}

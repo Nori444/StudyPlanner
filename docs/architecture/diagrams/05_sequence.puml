@@ -1,0 +1,31 @@
+@startuml
+title Критичний сценарій: додавання навчального завдання
+actor Студент
+participant "UI (index.html)" as UI
+participant "Task Service" as SVC
+participant "Storage Adapter" as REPO
+database "localStorage" as LS
+
+Студент -> UI: вводить назву, предмет, дедлайн; «Додати»
+UI -> SVC: addTask({title, subject, due})
+SVC -> SVC: trim(title); 1 ≤ len ≤ 100
+alt назва порожня або > 100 символів
+  SVC --> UI: error VALIDATION_TITLE
+  UI --> Студент: підсвічує поле + «Вкажіть назву завдання»
+else назва коректна
+  SVC -> SVC: створює Task {id=UUID, status=todo, created_at}
+  SVC -> REPO: save(tasks)
+  REPO -> LS: setItem("studyplanner.tasks.v1", JSON)
+  alt QuotaExceededError / сховище недоступне
+    LS --> REPO: exception
+    REPO --> SVC: error STORAGE_WRITE
+    SVC --> UI: error (стан у пам'яті відкочено)
+    UI --> Студент: банер «Не вдалося зберегти» + «Спробувати ще раз»
+  else запис успішний
+    LS --> REPO: ok
+    REPO --> SVC: ok
+    SVC --> UI: Task
+    UI --> Студент: оновлений список + повідомлення про успіх
+  end
+end
+@enduml
