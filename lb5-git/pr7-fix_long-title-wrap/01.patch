@@ -1,0 +1,21 @@
+diff --git a/src/style.css b/src/style.css
+index 5bb6d4d..338b956 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -24,3 +24,4 @@ dialog::backdrop{background:#1d254a66}dialog h2{margin-bottom:10px}dialog p{marg
+ .dialog-actions{display:flex;justify-content:flex-end;gap:10px}.secondary{background:#f1f2f7;color:#394058}.secondary:hover{background:#e3e6ef}
+ .danger{background:#b3261e}.danger:hover{background:#8f1e18}
+ .badge-overdue{color:#b3261e;font-weight:700}
++.task .info{min-width:0}.task strong,.meta{overflow-wrap:anywhere}
+diff --git a/tests/e2e/smoke.js b/tests/e2e/smoke.js
+index 11c4d57..5f946fb 100644
+--- a/tests/e2e/smoke.js
++++ b/tests/e2e/smoke.js
+@@ -45,6 +45,7 @@ const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); cons
+   await shot(page, "03_validation_101");
+   await page.fill("#title", "а".repeat(100)); await page.click("button[type=submit]");
+   check("100 символів приймається", (await page.locator(".task").count()) === before + 1);
++  check("Довга назва не розтягує сторінку по горизонталі", await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+   // видалення з підтвердженням
+   const n = await page.locator(".task").count();
+   await page.locator(".task").first().locator(".delete").click();

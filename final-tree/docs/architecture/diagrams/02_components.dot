@@ -1,0 +1,20 @@
+digraph G {
+  rankdir=TB; fontname="Inter"; nodesep=0.6; ranksep=0.7; pad=0.3; compound=true;
+  node [fontname="Inter", fontsize=12, style="filled,rounded", shape=box, color="#5265c9", fillcolor="#eef0ff", margin="0.22,0.14"];
+  edge [fontname="Inter", fontsize=10.5, color="#535c73", arrowsize=0.8];
+
+  subgraph cluster_browser {
+    label="Браузер студента (клієнтський застосунок)"; labeljust=l; fontsize=13; style="dashed,rounded"; color="#5265c9"; fontcolor="#3f51b5"; margin=22;
+    ui   [label="C1  UI / View\nindex.html, style.css, render()\nформа, список, лічильник, порожній стан"];
+    msg  [label="C4  Message Center\nтости, банери помилок,\nмодальне підтвердження", fillcolor="#fff4d6", color="#c79a1e"];
+    svc  [label="C2  Task Service\nвалідація, створення, зміна статусу,\nвидалення, ознака «прострочено»", fillcolor="#dfe4ff"];
+    repo [label="C3  Storage Adapter\nload / save, ключ studyplanner.tasks.v1,\nобробка помилок і пошкоджених даних", fillcolor="#e8f6ee", color="#2f9e63"];
+  }
+  ls [label="localStorage\n(Web Storage API браузера)", fillcolor="#f3f3f3", color="#999999"];
+
+  ui -> svc  [label="команди: add / toggle / delete"];
+  svc -> ui  [label="результат або код помилки", style=dashed];
+  ui -> msg  [label="показати повідомлення"];
+  svc -> repo [label="read / write Task[]"];
+  repo -> ls  [label="getItem / setItem (JSON)"];
+}

@@ -1,0 +1,49 @@
+diff --git a/src/app.js b/src/app.js
+index 6cee27e..a67c54a 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -50,7 +50,7 @@ function render(){
+     const info = document.createElement("div"); info.className = "info";
+     const title = document.createElement("strong"); title.textContent = task.title;
+     const meta = document.createElement("div"); meta.className = "meta";
+-    meta.textContent = [task.subject || "Без предмета", task.due ? `Дедлайн: ${task.due}` : "Без дедлайну"].join(" • ");
++    meta.textContent = [task.subject || "Без предмета", task.due ? `Дедлайн: ${SP.formatDate(task.due) || task.due}` : "Без дедлайну"].join(" • ");
+     info.append(title,meta);
+     const del = document.createElement("button"); del.className = "delete"; del.textContent = "Видалити";
+     del.addEventListener("click", () => askDelete(task, del));
+diff --git a/src/tasks.js b/src/tasks.js
+index 4a48b85..ad7fbc0 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -39,5 +39,11 @@
+     };
+   }
+ 
+-  return { validateTitle, validateSubject, createTask, TITLE_MAX, SUBJECT_MAX };
++  /** "2026-11-18" → "18.11.2026" без Date, щоб часовий пояс не зсував день. */
++  function formatDate(iso) {
++    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
++    return m ? m[3] + "." + m[2] + "." + m[1] : "";
++  }
++
++  return { validateTitle, validateSubject, createTask, formatDate, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index 167c11d..1d9fd59 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -41,3 +41,14 @@ test("createTask: помилки повертаються по полях", () =
+   assert.equal(r.ok, false);
+   assert.ok(r.errors.title && r.errors.subject);
+ });
++
++const { formatDate } = require("../src/tasks.js");
++test("TC-10: дата відображається як дд.мм.рррр", () => {
++  assert.equal(formatDate("2026-11-18"), "18.11.2026");
++  assert.equal(formatDate("2026-01-05"), "05.01.2026");
++});
++test("formatDate: порожнє або некоректне значення → порожній рядок", () => {
++  assert.equal(formatDate(""), "");
++  assert.equal(formatDate(undefined), "");
++  assert.equal(formatDate("18.11.2026"), "");
++});

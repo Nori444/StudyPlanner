@@ -1,0 +1,59 @@
+diff --git a/src/app.js b/src/app.js
+index 9723d61..9d7405b 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -32,7 +32,7 @@ function commit(next){
+ }
+ 
+ if(loaded.error === "corrupted") showBanner("Збережені дані пошкоджені, тому список порожній. Копію збережено в браузері.");
+-if(loaded.error === "unavailable") showBanner("Сховище браузера недоступне: завдання не збережуться після закриття сторінки.");
++if(loaded.error === "unavailable") showBanner("Сховище браузера недоступне, тому додавати й змінювати завдання зараз не можна. Перевірте налаштування приватності браузера.");
+ function render(){
+   list.innerHTML = "";
+   empty.hidden = tasks.length > 0;
+@@ -44,7 +44,7 @@ function render(){
+     li.className = `task${task.done ? " done" : ""}`;
+     const check = document.createElement("input");
+     check.type = "checkbox"; check.checked = task.done;
+-    check.setAttribute("aria-label","Позначити виконаним");
++    check.setAttribute("aria-label","Позначити виконаним: " + task.title);
+     check.addEventListener("change", () => {
+       if(!commit(tasks.map(t => t.id === task.id ? { ...t, done: check.checked } : t))) check.checked = task.done;
+     });
+@@ -58,6 +58,7 @@ function render(){
+     }
+     info.append(title,meta);
+     const del = document.createElement("button"); del.className = "delete"; del.textContent = "Видалити";
++    del.setAttribute("aria-label", "Видалити завдання: " + task.title);
+     del.addEventListener("click", () => askDelete(task, del));
+     li.append(check,info,del); list.append(li);
+   });
+@@ -75,7 +76,14 @@ function askDelete(task, opener){
+ dialog.addEventListener("close", () => {
+   if(dialog.returnValue === "confirm" && deleteTarget){
+     const id = deleteTarget.id;
+-    commit(tasks.filter(t => t.id !== id));
++    const index = tasks.findIndex(t => t.id === id);
++    if(commit(tasks.filter(t => t.id !== id))){
++      /* фокус не губимо: наступний елемент списку, інакше поле назви */
++      const buttons = list.querySelectorAll(".delete");
++      (buttons[Math.min(index, buttons.length - 1)] || titleInput).focus();
++    } else if(deleteOpener && deleteOpener.isConnected){
++      deleteOpener.focus();
++    }
+   } else if(deleteOpener && deleteOpener.isConnected){
+     deleteOpener.focus();
+   }
+diff --git a/src/index.html b/src/index.html
+index 1fb3e08..274dab4 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -17,7 +17,7 @@
+     <section class="panel">
+       <h2>Додати завдання</h2>
+       <form id="task-form" novalidate>
+-        <label>Назва завдання<input id="title" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
++        <label>Назва завдання<input id="title" aria-required="true" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
+         <div class="fields">
+           <label>Предмет<input id="subject" aria-describedby="subject-error" placeholder="Проєктний практикум"><span id="subject-error" class="field-error" role="alert" hidden></span></label>
+           <label>Дедлайн<input id="due" type="date"></label>

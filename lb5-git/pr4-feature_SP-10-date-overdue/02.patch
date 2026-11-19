@@ -1,0 +1,80 @@
+diff --git a/src/app.js b/src/app.js
+index a67c54a..d2e5c02 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -38,6 +38,7 @@ function render(){
+   empty.hidden = tasks.length > 0;
+   const done = tasks.filter(t => t.done).length;
+   counter.textContent = `${tasks.length} завдань • виконано ${done}`;
++  const today = SP.todayISO();
+   tasks.forEach(task => {
+     const li = document.createElement("li");
+     li.className = `task${task.done ? " done" : ""}`;
+@@ -51,6 +52,10 @@ function render(){
+     const title = document.createElement("strong"); title.textContent = task.title;
+     const meta = document.createElement("div"); meta.className = "meta";
+     meta.textContent = [task.subject || "Без предмета", task.due ? `Дедлайн: ${SP.formatDate(task.due) || task.due}` : "Без дедлайну"].join(" • ");
++    if(SP.isOverdue(task, today)){
++      const badge = document.createElement("span"); badge.className = "badge-overdue"; badge.textContent = "Прострочено";
++      meta.append(" • ", badge);
++    }
+     info.append(title,meta);
+     const del = document.createElement("button"); del.className = "delete"; del.textContent = "Видалити";
+     del.addEventListener("click", () => askDelete(task, del));
+diff --git a/src/style.css b/src/style.css
+index c8f50e7..5bb6d4d 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -23,3 +23,4 @@ dialog{border:0;border-radius:16px;padding:24px;max-width:420px;width:calc(100%
+ dialog::backdrop{background:#1d254a66}dialog h2{margin-bottom:10px}dialog p{margin:0 0 20px;color:#535c73;overflow-wrap:anywhere}
+ .dialog-actions{display:flex;justify-content:flex-end;gap:10px}.secondary{background:#f1f2f7;color:#394058}.secondary:hover{background:#e3e6ef}
+ .danger{background:#b3261e}.danger:hover{background:#8f1e18}
++.badge-overdue{color:#b3261e;font-weight:700}
+diff --git a/src/tasks.js b/src/tasks.js
+index ad7fbc0..8ad5ec8 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -45,5 +45,18 @@
+     return m ? m[3] + "." + m[2] + "." + m[1] : "";
+   }
+ 
+-  return { validateTitle, validateSubject, createTask, formatDate, TITLE_MAX, SUBJECT_MAX };
++  /** Сьогоднішня локальна дата у форматі РРРР-ММ-ДД. */
++  function todayISO(now) {
++    const d = now || new Date();
++    const p = (n) => String(n).padStart(2, "0");
++    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
++  }
++
++  /** Прострочено: є дедлайн, він раніше за сьогодні, завдання не виконано.
++   *  Дати порівнюються як рядки РРРР-ММ-ДД, тому часовий пояс не впливає. */
++  function isOverdue(task, today) {
++    return !task.done && !!task.due && task.due < (today || todayISO());
++  }
++
++  return { validateTitle, validateSubject, createTask, formatDate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index 1d9fd59..63b4cdd 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -52,3 +52,19 @@ test("formatDate: порожнє або некоректне значення 
+   assert.equal(formatDate(undefined), "");
+   assert.equal(formatDate("18.11.2026"), "");
+ });
++
++const { isOverdue, todayISO } = require("../src/tasks.js");
++test("TC-10: учорашній дедлайн → прострочено", () => {
++  assert.equal(isOverdue({ due: "2026-11-18", done: false }, "2026-11-19"), true);
++});
++test("сьогоднішній і майбутній дедлайн не прострочені", () => {
++  assert.equal(isOverdue({ due: "2026-11-19", done: false }, "2026-11-19"), false);
++  assert.equal(isOverdue({ due: "2026-11-20", done: false }, "2026-11-19"), false);
++});
++test("виконане завдання або без дедлайну не прострочене", () => {
++  assert.equal(isOverdue({ due: "2026-11-18", done: true }, "2026-11-19"), false);
++  assert.equal(isOverdue({ due: "", done: false }, "2026-11-19"), false);
++});
++test("todayISO повертає локальну дату РРРР-ММ-ДД", () => {
++  assert.equal(todayISO(new Date(2026, 10, 9, 23, 59)), "2026-11-09");
++});

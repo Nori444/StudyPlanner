@@ -1,0 +1,50 @@
+diff --git a/src/app.js b/src/app.js
+index d2e5c02..9723d61 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -92,7 +92,7 @@ function setFieldError(input, el, message){
+   el.hidden = !message;
+   if(message) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
+ }
+-function makeId(){ return crypto.randomUUID ? crypto.randomUUID() : String(Date.now()); }
++function makeId(){ return crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
+ 
+ form.addEventListener("submit", e => {
+   e.preventDefault();
+diff --git a/src/storage.js b/src/storage.js
+index 30c6e30..4eaf2a0 100644
+--- a/src/storage.js
++++ b/src/storage.js
+@@ -16,6 +16,10 @@
+       (t.due === undefined || typeof t.due === "string");
+   }
+ 
++  function hasDuplicateIds(tasks) {
++    return new Set(tasks.map((t) => t.id)).size !== tasks.length;
++  }
++
+   function createStorage(store) {
+     function load() {
+       if (!store) return { tasks: [], error: "unavailable" };
+@@ -32,7 +36,7 @@
+       } catch (e) {
+         return corrupted(raw);
+       }
+-      if (!Array.isArray(data) || !data.every(isValidTask)) return corrupted(raw);
++      if (!Array.isArray(data) || !data.every(isValidTask) || hasDuplicateIds(data)) return corrupted(raw);
+       return { tasks: data, error: null };
+     }
+     function corrupted(raw) {
+diff --git a/tests/storage.test.js b/tests/storage.test.js
+index 8889f85..786bca5 100644
+--- a/tests/storage.test.js
++++ b/tests/storage.test.js
+@@ -49,3 +49,8 @@ test("збій читання або відсутнє сховище → unavail
+   assert.equal(createStorage(null).load().error, "unavailable");
+   assert.equal(createStorage(null).save([]).ok, false);
+ });
++
++test("дублікати id → corrupted (інакше видалення одного прибере обидва)", () => {
++  const store = fakeStore({ [STORAGE_KEY]: JSON.stringify([task({ id: "a" }), task({ id: "a", title: "Інше" })]) });
++  assert.equal(createStorage(store).load().error, "corrupted");
++});

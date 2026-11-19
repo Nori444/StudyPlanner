@@ -1,0 +1,52 @@
+diff --git a/src/storage.js b/src/storage.js
+index 047b245..30c6e30 100644
+--- a/src/storage.js
++++ b/src/storage.js
+@@ -6,15 +6,38 @@
+ })(typeof self !== "undefined" ? self : globalThis, function () {
+   const KEY = "studyplanner.tasks.v1";
+ 
++  const BACKUP_KEY = KEY + ".backup";
++
++  function isValidTask(t) {
++    return !!t && typeof t === "object" &&
++      typeof t.id === "string" && typeof t.title === "string" &&
++      typeof t.done === "boolean" &&
++      (t.subject === undefined || typeof t.subject === "string") &&
++      (t.due === undefined || typeof t.due === "string");
++  }
++
+   function createStorage(store) {
+     function load() {
+       if (!store) return { tasks: [], error: "unavailable" };
++      let raw;
+       try {
+-        const raw = store.getItem(KEY);
+-        return { tasks: raw ? JSON.parse(raw) : [], error: null };
++        raw = store.getItem(KEY);
+       } catch (e) {
+         return { tasks: [], error: "unavailable" };
+       }
++      if (raw === null) return { tasks: [], error: null };
++      let data;
++      try {
++        data = JSON.parse(raw);
++      } catch (e) {
++        return corrupted(raw);
++      }
++      if (!Array.isArray(data) || !data.every(isValidTask)) return corrupted(raw);
++      return { tasks: data, error: null };
++    }
++    function corrupted(raw) {
++      try { store.setItem(BACKUP_KEY, raw); } catch (e) { /* копія необов'язкова */ }
++      return { tasks: [], error: "corrupted" };
+     }
+     function save(tasks) {
+       if (!store) return { ok: false, error: "write_failed" };
+@@ -28,5 +51,5 @@
+     return { load, save };
+   }
+ 
+-  return { createStorage, STORAGE_KEY: KEY };
++  return { createStorage, isValidTask, STORAGE_KEY: KEY, BACKUP_KEY };
+ });

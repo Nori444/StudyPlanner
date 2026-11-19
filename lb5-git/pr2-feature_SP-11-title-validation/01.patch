@@ -1,0 +1,126 @@
+diff --git a/src/app.js b/src/app.js
+index eda8993..1ec9fe9 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -57,17 +57,26 @@ function render(){
+     li.append(check,info,del); list.append(li);
+   });
+ }
++const titleInput = document.querySelector("#title");
++const titleError = document.querySelector("#title-error");
++const subjectInput = document.querySelector("#subject");
++const subjectError = document.querySelector("#subject-error");
++
++function setFieldError(input, el, message){
++  el.textContent = message || "";
++  el.hidden = !message;
++  if(message) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
++}
++function makeId(){ return crypto.randomUUID ? crypto.randomUUID() : String(Date.now()); }
++
+ form.addEventListener("submit", e => {
+   e.preventDefault();
+-  const title = document.querySelector("#title").value.trim();
+-  if(!title) return;
+-  const task = {
+-    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+-    title,
+-    subject: document.querySelector("#subject").value.trim(),
+-    due: document.querySelector("#due").value,
+-    done:false
+-  };
+-  if(commit([task, ...tasks])) form.reset();
++  const result = SP.createTask({ title: titleInput.value, subject: subjectInput.value, due: document.querySelector("#due").value }, makeId);
++  setFieldError(titleInput, titleError, result.ok ? "" : result.errors.title);
++  setFieldError(subjectInput, subjectError, result.ok ? "" : result.errors.subject);
++  if(!result.ok){ (result.errors.title ? titleInput : subjectInput).focus(); return; }
++  if(commit([result.task, ...tasks])) form.reset();
+ });
++titleInput.addEventListener("input", () => setFieldError(titleInput, titleError, ""));
++subjectInput.addEventListener("input", () => setFieldError(subjectInput, subjectError, ""));
+ render();
+diff --git a/src/index.html b/src/index.html
+index f0462b5..9e417bc 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -16,10 +16,10 @@
+     <div id="banner" class="banner" role="alert" hidden></div>
+     <section class="panel">
+       <h2>Додати завдання</h2>
+-      <form id="task-form">
+-        <label>Назва завдання<input id="title" required maxlength="100" placeholder="Наприклад, лабораторна робота №2"></label>
++      <form id="task-form" novalidate>
++        <label>Назва завдання<input id="title" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
+         <div class="fields">
+-          <label>Предмет<input id="subject" maxlength="60" placeholder="Проєктний практикум"></label>
++          <label>Предмет<input id="subject" aria-describedby="subject-error" placeholder="Проєктний практикум"><span id="subject-error" class="field-error" role="alert" hidden></span></label>
+           <label>Дедлайн<input id="due" type="date"></label>
+         </div>
+         <button type="submit">Додати завдання</button>
+@@ -33,6 +33,7 @@
+     <footer>Навчальний проєкт • Індивідуальна робота</footer>
+   </main>
+   <script src="storage.js"></script>
++  <script src="tasks.js"></script>
+   <script src="app.js"></script>
+ </body>
+ </html>
+diff --git a/src/style.css b/src/style.css
+index 303df8f..bb2f21c 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -17,3 +17,5 @@ button:hover{background:#3f51b5}.list-heading{display:flex;justify-content:space
+ @media(max-width:560px){.container{margin:24px auto}.fields{grid-template-columns:1fr}.panel,.tasks{padding:18px}}
+ .banner{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#fff4e5;border:1px solid #f0c27b;color:#7a4a00;border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:14px}
+ .banner[hidden]{display:none}.banner button{padding:8px 12px;background:#b26a00;white-space:nowrap}.banner button:hover{background:#8f5600}
++.field-error{display:block;margin-top:6px;font-size:12.5px;font-weight:600;color:#b3261e}.field-error[hidden]{display:none}
++input[aria-invalid="true"]{border-color:#b3261e}
+diff --git a/src/tasks.js b/src/tasks.js
+new file mode 100644
+index 0000000..4a48b85
+--- /dev/null
++++ b/src/tasks.js
+@@ -0,0 +1,43 @@
++/* Task Service: правила предметної області (без DOM і без localStorage). */
++(function (root, factory) {
++  const api = factory();
++  if (typeof module === "object" && module.exports) module.exports = api;
++  else root.SP = Object.assign(root.SP || {}, api);
++})(typeof self !== "undefined" ? self : globalThis, function () {
++  const TITLE_MAX = 100;
++  const SUBJECT_MAX = 60;
++
++  /** Назва: після trim() від 1 до 100 символів. */
++  function validateTitle(raw) {
++    const value = String(raw == null ? "" : raw).trim();
++    if (value.length === 0) return { ok: false, error: "Введіть назву завдання." };
++    if (value.length > TITLE_MAX) {
++      return { ok: false, error: "Назва має містити від 1 до " + TITLE_MAX + " символів (зараз " + value.length + ")." };
++    }
++    return { ok: true, value };
++  }
++
++  /** Предмет необов'язковий: до 60 символів після trim(). */
++  function validateSubject(raw) {
++    const value = String(raw == null ? "" : raw).trim();
++    if (value.length > SUBJECT_MAX) {
++      return { ok: false, error: "Назва предмета має містити не більше " + SUBJECT_MAX + " символів." };
++    }
++    return { ok: true, value };
++  }
++
++  /** Створює завдання або повертає помилки валідації. */
++  function createTask(input, makeId) {
++    const title = validateTitle(input.title);
++    const subject = validateSubject(input.subject);
++    if (!title.ok || !subject.ok) {
++      return { ok: false, errors: { title: title.ok ? null : title.error, subject: subject.ok ? null : subject.error } };
++    }
++    return {
++      ok: true,
++      task: { id: makeId(), title: title.value, subject: subject.value, due: input.due || "", done: false },
++    };
++  }
++
++  return { validateTitle, validateSubject, createTask, TITLE_MAX, SUBJECT_MAX };
++});

@@ -1,0 +1,69 @@
+diff --git a/src/app.js b/src/app.js
+index 9423467..adb3645 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -2,10 +2,11 @@ const form = document.querySelector("#task-form");
+ const list = document.querySelector("#task-list");
+ const empty = document.querySelector("#empty");
+ const counter = document.querySelector("#counter");
+-const KEY = "studyplanner.tasks.v1";
+-let tasks = JSON.parse(localStorage.getItem(KEY) || "[]");
++function getStore(){ try { return window.localStorage; } catch (e) { return null; } }
++const storage = SP.createStorage(getStore());
++let tasks = storage.load().tasks;
+ 
+-function save(){ localStorage.setItem(KEY, JSON.stringify(tasks)); render(); }
++function save(){ storage.save(tasks); render(); }
+ function render(){
+   list.innerHTML = "";
+   empty.hidden = tasks.length > 0;
+diff --git a/src/index.html b/src/index.html
+index d6e0a84..d739168 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -31,6 +31,7 @@
+     </section>
+     <footer>Навчальний проєкт • Індивідуальна робота</footer>
+   </main>
++  <script src="storage.js"></script>
+   <script src="app.js"></script>
+ </body>
+ </html>
+diff --git a/src/storage.js b/src/storage.js
+new file mode 100644
+index 0000000..047b245
+--- /dev/null
++++ b/src/storage.js
+@@ -0,0 +1,32 @@
++/* Storage Adapter: єдина точка доступу до localStorage (ADR-002). */
++(function (root, factory) {
++  const api = factory();
++  if (typeof module === "object" && module.exports) module.exports = api;
++  else root.SP = Object.assign(root.SP || {}, api);
++})(typeof self !== "undefined" ? self : globalThis, function () {
++  const KEY = "studyplanner.tasks.v1";
++
++  function createStorage(store) {
++    function load() {
++      if (!store) return { tasks: [], error: "unavailable" };
++      try {
++        const raw = store.getItem(KEY);
++        return { tasks: raw ? JSON.parse(raw) : [], error: null };
++      } catch (e) {
++        return { tasks: [], error: "unavailable" };
++      }
++    }
++    function save(tasks) {
++      if (!store) return { ok: false, error: "write_failed" };
++      try {
++        store.setItem(KEY, JSON.stringify(tasks));
++        return { ok: true };
++      } catch (e) {
++        return { ok: false, error: "write_failed" };
++      }
++    }
++    return { load, save };
++  }
++
++  return { createStorage, STORAGE_KEY: KEY };
++});

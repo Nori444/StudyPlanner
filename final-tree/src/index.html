@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyPlanner — навчальний планувальник</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <p class="eyebrow">STUDYPLANNER</p>
+      <h1>Мої навчальні завдання</h1>
+      <p class="subtitle">Усі дедлайни в одному місці — крок за кроком.</p>
+    </header>
+    <div id="banner" class="banner" role="alert" hidden></div>
+    <section class="panel">
+      <h2>Додати завдання</h2>
+      <form id="task-form" novalidate>
+        <label>Назва завдання<input id="title" aria-required="true" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
+        <div class="fields">
+          <label>Предмет<input id="subject" aria-describedby="subject-error" placeholder="Проєктний практикум"><span id="subject-error" class="field-error" role="alert" hidden></span></label>
+          <label>Дедлайн<input id="due" type="date"></label>
+        </div>
+        <button type="submit">Додати завдання</button>
+      </form>
+    </section>
+    <section class="tasks">
+      <div class="list-heading"><h2>Список завдань</h2><span id="counter">0 завдань</span></div>
+      <ul id="task-list"></ul>
+      <p id="empty" class="empty">Поки що завдань немає. Додай перше вище 👆</p>
+    </section>
+    <footer>Навчальний проєкт • Індивідуальна робота</footer>
+  </main>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Видалити завдання?</h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary" autofocus>Скасувати</button>
+        <button value="confirm" class="danger">Видалити</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="storage.js"></script>
+  <script src="tasks.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

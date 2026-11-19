@@ -1,0 +1,69 @@
+diff --git a/src/app.js b/src/app.js
+index 1ec9fe9..6cee27e 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -53,10 +53,30 @@ function render(){
+     meta.textContent = [task.subject || "Без предмета", task.due ? `Дедлайн: ${task.due}` : "Без дедлайну"].join(" • ");
+     info.append(title,meta);
+     const del = document.createElement("button"); del.className = "delete"; del.textContent = "Видалити";
+-    del.addEventListener("click", () => { commit(tasks.filter(t => t.id !== task.id)); });
++    del.addEventListener("click", () => askDelete(task, del));
+     li.append(check,info,del); list.append(li);
+   });
+ }
++/* Підтвердження видалення (модальний діалог: Esc і фокус забезпечує <dialog>) */
++const dialog = document.querySelector("#confirm-dialog");
++const dialogText = document.querySelector("#confirm-text");
++let deleteTarget = null, deleteOpener = null;
++
++function askDelete(task, opener){
++  deleteTarget = task; deleteOpener = opener;
++  dialogText.textContent = "Видалити завдання «" + task.title + "»? Цю дію не можна скасувати.";
++  dialog.showModal();
++}
++dialog.addEventListener("close", () => {
++  if(dialog.returnValue === "confirm" && deleteTarget){
++    const id = deleteTarget.id;
++    commit(tasks.filter(t => t.id !== id));
++  } else if(deleteOpener && deleteOpener.isConnected){
++    deleteOpener.focus();
++  }
++  deleteTarget = null; deleteOpener = null; dialog.returnValue = "";
++});
++
+ const titleInput = document.querySelector("#title");
+ const titleError = document.querySelector("#title-error");
+ const subjectInput = document.querySelector("#subject");
+diff --git a/src/index.html b/src/index.html
+index 9e417bc..1fb3e08 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -32,6 +32,16 @@
+     </section>
+     <footer>Навчальний проєкт • Індивідуальна робота</footer>
+   </main>
++  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
++    <form method="dialog">
++      <h2 id="confirm-title">Видалити завдання?</h2>
++      <p id="confirm-text"></p>
++      <div class="dialog-actions">
++        <button value="cancel" class="secondary" autofocus>Скасувати</button>
++        <button value="confirm" class="danger">Видалити</button>
++      </div>
++    </form>
++  </dialog>
+   <script src="storage.js"></script>
+   <script src="tasks.js"></script>
+   <script src="app.js"></script>
+diff --git a/src/style.css b/src/style.css
+index bb2f21c..c8f50e7 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -19,3 +19,7 @@ button:hover{background:#3f51b5}.list-heading{display:flex;justify-content:space
+ .banner[hidden]{display:none}.banner button{padding:8px 12px;background:#b26a00;white-space:nowrap}.banner button:hover{background:#8f5600}
+ .field-error{display:block;margin-top:6px;font-size:12.5px;font-weight:600;color:#b3261e}.field-error[hidden]{display:none}
+ input[aria-invalid="true"]{border-color:#b3261e}
++dialog{border:0;border-radius:16px;padding:24px;max-width:420px;width:calc(100% - 40px);box-shadow:0 20px 60px #1d254a40}
++dialog::backdrop{background:#1d254a66}dialog h2{margin-bottom:10px}dialog p{margin:0 0 20px;color:#535c73;overflow-wrap:anywhere}
++.dialog-actions{display:flex;justify-content:flex-end;gap:10px}.secondary{background:#f1f2f7;color:#394058}.secondary:hover{background:#e3e6ef}
++.danger{background:#b3261e}.danger:hover{background:#8f1e18}

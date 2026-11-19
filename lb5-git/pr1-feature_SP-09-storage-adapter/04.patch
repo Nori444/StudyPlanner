@@ -1,0 +1,128 @@
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+new file mode 100644
+index 0000000..96ec154
+--- /dev/null
++++ b/.github/workflows/test.yml
+@@ -0,0 +1,14 @@
++name: tests
++on:
++  push:
++    branches: [main]
++  pull_request:
++jobs:
++  unit:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 20
++      - run: node --test
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..d6de4a6
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,16 @@
++# OS
++.DS_Store
++Thumbs.db
++# Editors
++.vscode/
++.idea/
++# Logs
++*.log
++# Environment secrets
++.env
++.env.*
++!.env.example
++# Dependencies/build output
++node_modules/
++dist/
++build/
+diff --git a/docs/test-cases.md b/docs/test-cases.md
+index d2b97b8..70ae927 100644
+--- a/docs/test-cases.md
++++ b/docs/test-cases.md
+@@ -8,8 +8,8 @@
+ | TC-04 | Позначити завдання виконаним | Завдання отримує стиль виконаного | — | — |
+ | TC-05 | Видалити завдання | Завдання зникає зі списку | — | — |
+ | TC-06 | Оновити сторінку | Збережені завдання залишаються в браузері | — | — |
+-| TC-07 | Імітувати збій запису в localStorage і додати завдання | Банер із «Спробувати ще раз»; стан списку не змінено | — | — |
+-| TC-08 | Записати некоректний JSON у `studyplanner.tasks.v1` і відкрити сторінку | Порожній список і повідомлення; застосунок працює | — | — |
++| TC-07 | Імітувати збій запису в localStorage і додати завдання | Банер із «Спробувати ще раз»; стан списку не змінено | Пройдено (unit-тест + ручна перевірка) | 19.11.2026 |
++| TC-08 | Записати некоректний JSON у `studyplanner.tasks.v1` і відкрити сторінку | Порожній список і повідомлення; застосунок працює; копія в `…v1.backup` | Пройдено (unit-тест + ручна перевірка) | 19.11.2026 |
+ | TC-09 | «Видалити» → «Скасувати»; потім «Видалити» → підтвердити | Після скасування запис лишається; після підтвердження зникає | — | — |
+ | TC-10 | Завдання з учорашнім дедлайном | Текст «Прострочено»; дата дд.мм.рррр | — | — |
+ | TC-11 | Назва з пробілів; назва з 101 символа | Завдання не додається; показано правило | — | — |
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..7f49dbc
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,8 @@
++{
++  "name": "studyplanner",
++  "version": "0.2.0",
++  "private": true,
++  "description": "Навчальний планувальник завдань (MVP)",
++  "scripts": { "test": "node --test" },
++  "engines": { "node": ">=18" }
++}
+diff --git a/tests/storage.test.js b/tests/storage.test.js
+new file mode 100644
+index 0000000..8889f85
+--- /dev/null
++++ b/tests/storage.test.js
+@@ -0,0 +1,51 @@
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const { createStorage, STORAGE_KEY, BACKUP_KEY } = require("../src/storage.js");
++
++function fakeStore(initial = {}, opts = {}) {
++  const data = { ...initial };
++  return {
++    data,
++    getItem: (k) => { if (opts.failRead) throw new Error("read"); return k in data ? data[k] : null; },
++    setItem: (k, v) => { if (opts.failWrite) throw new Error("quota"); data[k] = String(v); },
++  };
++}
++const task = (over = {}) => ({ id: "1", title: "Лаба", subject: "ПП", due: "2026-11-30", done: false, ...over });
++
++test("порожнє сховище → порожній список без помилки", () => {
++  assert.deepEqual(createStorage(fakeStore()).load(), { tasks: [], error: null });
++});
++
++test("save і load повертають ті самі завдання", () => {
++  const s = createStorage(fakeStore());
++  assert.equal(s.save([task()]).ok, true);
++  assert.deepEqual(s.load().tasks, [task()]);
++});
++
++test("TC-07: збій запису → ok=false, без винятку", () => {
++  const s = createStorage(fakeStore({}, { failWrite: true }));
++  assert.deepEqual(s.save([task()]), { ok: false, error: "write_failed" });
++});
++
++test("TC-08: некоректний JSON → порожній список, error=corrupted, копія збережена", () => {
++  const store = fakeStore({ [STORAGE_KEY]: "{не json" });
++  const r = createStorage(store).load();
++  assert.deepEqual(r, { tasks: [], error: "corrupted" });
++  assert.equal(store.data[BACKUP_KEY], "{не json");
++});
++
++test("TC-08: валідний JSON, але не масив завдань → corrupted", () => {
++  const store = fakeStore({ [STORAGE_KEY]: JSON.stringify({ a: 1 }) });
++  assert.equal(createStorage(store).load().error, "corrupted");
++});
++
++test("завдання з хибними типами полів → corrupted", () => {
++  const store = fakeStore({ [STORAGE_KEY]: JSON.stringify([task({ done: "yes" })]) });
++  assert.equal(createStorage(store).load().error, "corrupted");
++});
++
++test("збій читання або відсутнє сховище → unavailable", () => {
++  assert.equal(createStorage(fakeStore({}, { failRead: true })).load().error, "unavailable");
++  assert.equal(createStorage(null).load().error, "unavailable");
++  assert.equal(createStorage(null).save([]).ok, false);
++});

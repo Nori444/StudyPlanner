@@ -1,0 +1,102 @@
+diff --git a/src/app.js b/src/app.js
+index adb3645..eda8993 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -2,11 +2,37 @@ const form = document.querySelector("#task-form");
+ const list = document.querySelector("#task-list");
+ const empty = document.querySelector("#empty");
+ const counter = document.querySelector("#counter");
++const banner = document.querySelector("#banner");
+ function getStore(){ try { return window.localStorage; } catch (e) { return null; } }
+ const storage = SP.createStorage(getStore());
+-let tasks = storage.load().tasks;
++const loaded = storage.load();
++let tasks = loaded.tasks;
+ 
+-function save(){ storage.save(tasks); render(); }
++/* Message Center: банер з повідомленням і (за потреби) кнопкою повтору */
++function showBanner(message, retry){
++  banner.textContent = "";
++  const text = document.createElement("span"); text.textContent = message;
++  banner.append(text);
++  if(retry){
++    const btn = document.createElement("button");
++    btn.type = "button"; btn.textContent = "Спробувати ще раз";
++    btn.addEventListener("click", retry);
++    banner.append(btn);
++  }
++  banner.hidden = false;
++}
++function hideBanner(){ banner.hidden = true; banner.textContent = ""; }
++
++/* Зберігає новий стан; список змінюється лише після успішного запису */
++function commit(next){
++  const result = storage.save(next);
++  if(result.ok){ tasks = next; hideBanner(); render(); return true; }
++  showBanner("Не вдалося зберегти зміни в браузері. Список не змінено.", () => commit(next));
++  return false;
++}
++
++if(loaded.error === "corrupted") showBanner("Збережені дані пошкоджені, тому список порожній. Копію збережено в браузері.");
++if(loaded.error === "unavailable") showBanner("Сховище браузера недоступне: завдання не збережуться після закриття сторінки.");
+ function render(){
+   list.innerHTML = "";
+   empty.hidden = tasks.length > 0;
+@@ -18,14 +44,16 @@ function render(){
+     const check = document.createElement("input");
+     check.type = "checkbox"; check.checked = task.done;
+     check.setAttribute("aria-label","Позначити виконаним");
+-    check.addEventListener("change", () => { task.done = check.checked; save(); });
++    check.addEventListener("change", () => {
++      if(!commit(tasks.map(t => t.id === task.id ? { ...t, done: check.checked } : t))) check.checked = task.done;
++    });
+     const info = document.createElement("div"); info.className = "info";
+     const title = document.createElement("strong"); title.textContent = task.title;
+     const meta = document.createElement("div"); meta.className = "meta";
+     meta.textContent = [task.subject || "Без предмета", task.due ? `Дедлайн: ${task.due}` : "Без дедлайну"].join(" • ");
+     info.append(title,meta);
+     const del = document.createElement("button"); del.className = "delete"; del.textContent = "Видалити";
+-    del.addEventListener("click", () => { tasks = tasks.filter(t => t.id !== task.id); save(); });
++    del.addEventListener("click", () => { commit(tasks.filter(t => t.id !== task.id)); });
+     li.append(check,info,del); list.append(li);
+   });
+ }
+@@ -33,13 +61,13 @@ form.addEventListener("submit", e => {
+   e.preventDefault();
+   const title = document.querySelector("#title").value.trim();
+   if(!title) return;
+-  tasks.unshift({
++  const task = {
+     id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+     title,
+     subject: document.querySelector("#subject").value.trim(),
+     due: document.querySelector("#due").value,
+     done:false
+-  });
+-  form.reset(); save();
++  };
++  if(commit([task, ...tasks])) form.reset();
+ });
+ render();
+diff --git a/src/index.html b/src/index.html
+index d739168..f0462b5 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -13,6 +13,7 @@
+       <h1>Мої навчальні завдання</h1>
+       <p class="subtitle">Усі дедлайни в одному місці — крок за кроком.</p>
+     </header>
++    <div id="banner" class="banner" role="alert" hidden></div>
+     <section class="panel">
+       <h2>Додати завдання</h2>
+       <form id="task-form">
+diff --git a/src/style.css b/src/style.css
+index bcbcf23..303df8f 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -15,3 +15,5 @@ button:hover{background:#3f51b5}.list-heading{display:flex;justify-content:space
+ .delete{background:#f1f2f7;color:#596078;padding:8px 11px}.delete:hover{background:#e3e6ef}
+ .empty{text-align:center;color:#8a91a3;padding:18px 0}footer{text-align:center;color:#9299aa;font-size:12px;padding:16px}
+ @media(max-width:560px){.container{margin:24px auto}.fields{grid-template-columns:1fr}.panel,.tasks{padding:18px}}
++.banner{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#fff4e5;border:1px solid #f0c27b;color:#7a4a00;border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:14px}
++.banner[hidden]{display:none}.banner button{padding:8px 12px;background:#b26a00;white-space:nowrap}.banner button:hover{background:#8f5600}

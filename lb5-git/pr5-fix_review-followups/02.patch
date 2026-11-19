@@ -1,0 +1,65 @@
+diff --git a/src/tasks.js b/src/tasks.js
+index 8ad5ec8..3ee7c5e 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -35,14 +35,22 @@
+     }
+     return {
+       ok: true,
+-      task: { id: makeId(), title: title.value, subject: subject.value, due: input.due || "", done: false },
++      task: { id: makeId(), title: title.value, subject: subject.value, due: isValidISODate(input.due) ? input.due : "", done: false },
+     };
+   }
+ 
+-  /** "2026-11-18" → "18.11.2026" без Date, щоб часовий пояс не зсував день. */
+-  function formatDate(iso) {
++  /** Календарно коректна дата РРРР-ММ-ДД (2026-13-45 і 2026-02-30 — ні). */
++  function isValidISODate(iso) {
+     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+-    return m ? m[3] + "." + m[2] + "." + m[1] : "";
++    if (!m) return false;
++    const y = +m[1], mo = +m[2], d = +m[3];
++    const dt = new Date(Date.UTC(y, mo - 1, d));
++    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
++  }
++
++  /** "2026-11-18" → "18.11.2026" без Date у локальній зоні, щоб часовий пояс не зсував день. */
++  function formatDate(iso) {
++    return isValidISODate(iso) ? iso.slice(8, 10) + "." + iso.slice(5, 7) + "." + iso.slice(0, 4) : "";
+   }
+ 
+   /** Сьогоднішня локальна дата у форматі РРРР-ММ-ДД. */
+@@ -55,8 +63,8 @@
+   /** Прострочено: є дедлайн, він раніше за сьогодні, завдання не виконано.
+    *  Дати порівнюються як рядки РРРР-ММ-ДД, тому часовий пояс не впливає. */
+   function isOverdue(task, today) {
+-    return !task.done && !!task.due && task.due < (today || todayISO());
++    return !task.done && isValidISODate(task.due) && task.due < (today || todayISO());
+   }
+ 
+-  return { validateTitle, validateSubject, createTask, formatDate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
++  return { validateTitle, validateSubject, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index 63b4cdd..64a4ab9 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -68,3 +68,18 @@ test("виконане завдання або без дедлайну не пр
+ test("todayISO повертає локальну дату РРРР-ММ-ДД", () => {
+   assert.equal(todayISO(new Date(2026, 10, 9, 23, 59)), "2026-11-09");
+ });
++
++const { isValidISODate } = require("../src/tasks.js");
++test("isValidISODate: некоректні календарні дати відхиляються", () => {
++  assert.equal(isValidISODate("2026-11-18"), true);
++  assert.equal(isValidISODate("2028-02-29"), true);
++  assert.equal(isValidISODate("2026-02-30"), false);
++  assert.equal(isValidISODate("2026-13-45"), false);
++});
++test("formatDate і isOverdue ігнорують некоректну дату", () => {
++  assert.equal(formatDate("2026-13-45"), "");
++  assert.equal(isOverdue({ due: "2026-13-45", done: false }, "2026-11-19"), false);
++});
++test("createTask: некоректний дедлайн не зберігається", () => {
++  assert.equal(createTask({ title: "А", due: "2026-13-45" }, () => "i").task.due, "");
++});

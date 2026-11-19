@@ -1,0 +1,91 @@
+diff --git a/tests/e2e/smoke.js b/tests/e2e/smoke.js
+new file mode 100644
+index 0000000..11c4d57
+--- /dev/null
++++ b/tests/e2e/smoke.js
+@@ -0,0 +1,85 @@
++/* Необов'язковий e2e smoke-тест (Playwright не входить у залежності проєкту).
++ * Запуск: npm i --no-save playwright && node tests/e2e/smoke.js [каталог-для-скріншотів]
++ * Перевіряє головний сценарій, негативні випадки й збереження після перезавантаження. */
++const { chromium } = require("playwright");
++const path = require("path");
++const fs = require("fs");
++
++const PAGE = "file://" + path.resolve(__dirname, "../../src/index.html");
++const OUT = process.argv[2];
++const results = [];
++const check = (name, ok, extra) => { results.push({ name, ok: !!ok, extra: extra || "" }); console.log((ok ? "PASS " : "FAIL ") + name + (extra ? " — " + extra : "")); };
++const shot = async (page, n) => { if (OUT) { fs.mkdirSync(OUT, { recursive: true }); await page.screenshot({ path: path.join(OUT, n + ".png"), fullPage: true }); } };
++const addTask = async (p, t, s, d) => { await p.fill("#title", t); await p.fill("#subject", s || ""); await p.fill("#due", d || ""); await p.click("button[type=submit]"); };
++const settle = (p) => p.waitForTimeout(150); // подія close у <dialog> асинхронна
++const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); const q = n => String(n).padStart(2, "0"); return d.getFullYear() + "-" + q(d.getMonth() + 1) + "-" + q(d.getDate()); };
++
++(async () => {
++  const browser = await chromium.launch();
++  const ctx = await browser.newContext({ viewport: { width: 900, height: 900 }, deviceScaleFactor: 1.5 });
++  const page = await ctx.newPage();
++  const errors = []; page.on("pageerror", e => errors.push(e.message)); page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
++  await page.goto(PAGE);
++  await page.evaluate(() => localStorage.clear()); await page.reload();
++
++  check("TC-01 порожній стан", await page.isVisible("#empty"));
++  // позитивний сценарій
++  await addTask(page, "Лабораторна робота №5", "Проєктний практикум", "2026-12-05");
++  await addTask(page, "Реферат", "Економіка", yesterday());
++  check("TC-03 завдання додаються", (await page.locator(".task").count()) === 2);
++  check("TC-10 формат дати дд.мм.рррр", (await page.locator(".task").nth(1).innerText()).includes("05.12.2026"));
++  check("TC-10 позначка «Прострочено»", (await page.locator(".task").first().innerText()).includes("Прострочено"));
++  await shot(page, "01_main_scenario");
++  await page.locator(".task").nth(1).locator("input[type=checkbox]").check();
++  check("TC-04 позначення виконаним", await page.locator(".task.done").count() === 1);
++  await page.reload();
++  check("TC-06 дані збережено після перезавантаження", (await page.locator(".task").count()) === 2 && (await page.locator(".task.done").count()) === 1);
++  // валідація
++  const before = await page.locator(".task").count();
++  await page.fill("#title", "   "); await page.click("button[type=submit]");
++  check("TC-02/11 порожня назва: повідомлення, завдання не додано", (await page.locator("#title-error").isVisible()) && (await page.locator(".task").count()) === before);
++  await shot(page, "02_validation_empty");
++  await page.fill("#title", "а".repeat(101)); await page.click("button[type=submit]");
++  const msg = await page.locator("#title-error").innerText();
++  check("TC-11 101 символ: показано правило", msg.includes("від 1 до 100") && (await page.locator(".task").count()) === before, msg);
++  await shot(page, "03_validation_101");
++  await page.fill("#title", "а".repeat(100)); await page.click("button[type=submit]");
++  check("100 символів приймається", (await page.locator(".task").count()) === before + 1);
++  // видалення з підтвердженням
++  const n = await page.locator(".task").count();
++  await page.locator(".task").first().locator(".delete").click();
++  check("TC-09 діалог підтвердження відкривається", await page.locator("#confirm-dialog").evaluate(d => d.open));
++  await shot(page, "04_delete_confirm");
++  await page.click("#confirm-dialog button[value=cancel]"); await settle(page);
++  check("TC-09 «Скасувати» — завдання лишається", (await page.locator(".task").count()) === n);
++  await page.locator(".task").first().locator(".delete").click(); await page.keyboard.press("Escape"); await settle(page);
++  check("TC-09 Esc — завдання лишається", (await page.locator(".task").count()) === n);
++  await page.locator(".task").first().locator(".delete").click(); await page.click("#confirm-dialog button[value=confirm]"); await settle(page);
++  check("TC-09 підтвердження — завдання зникає", (await page.locator(".task").count()) === n - 1);
++  check("Фокус після видалення не втрачено", await page.evaluate(() => document.activeElement && document.activeElement !== document.body));
++  check("aria-label кнопки містить назву завдання", ((await page.locator(".task .delete").first().getAttribute("aria-label")) || "").startsWith("Видалити завдання: "));
++  // TC-07 збій запису
++  await page.evaluate(() => { window.__orig = Storage.prototype.setItem; Storage.prototype.setItem = function () { throw new DOMException("quota", "QuotaExceededError"); }; });
++  const cnt = await page.locator(".task").count();
++  await addTask(page, "Нове під час збою", "", "");
++  check("TC-07 банер помилки + список не змінено", (await page.locator("#banner").isVisible()) && (await page.locator(".task").count()) === cnt);
++  check("TC-07 введені дані не втрачено у формі", (await page.inputValue("#title")) === "Нове під час збою");
++  await shot(page, "05_storage_failure");
++  await page.evaluate(() => { Storage.prototype.setItem = window.__orig; });
++  await page.click("#banner button");
++  check("TC-07 «Спробувати ще раз» зберігає завдання", (await page.locator(".task").count()) === cnt + 1 && !(await page.locator("#banner").isVisible()));
++  // TC-08 пошкоджені дані
++  await page.evaluate(() => localStorage.setItem("studyplanner.tasks.v1", "{не json")); await page.reload();
++  check("TC-08 пошкоджені дані: порожній список і повідомлення", (await page.locator(".task").count()) === 0 && (await page.locator("#banner").isVisible()));
++  check("TC-08 копію збережено в …v1.backup", (await page.evaluate(() => localStorage.getItem("studyplanner.tasks.v1.backup"))) === "{не json");
++  await shot(page, "06_corrupted_data");
++  // XSS
++  await page.evaluate(() => localStorage.clear()); await page.reload();
++  await addTask(page, "<img src=x onerror=window.__xss=1>", "<b>x</b>", "");
++  check("XSS: HTML у назві виводиться текстом", !(await page.evaluate(() => window.__xss)) && (await page.locator(".task img").count()) === 0);
++  check("Помилок у консолі немає", errors.length === 0, errors.join("; "));
++  await browser.close();
++  const failed = results.filter(r => !r.ok).length;
++  console.log("\nПідсумок: " + (results.length - failed) + "/" + results.length + " пройдено");
++  process.exit(failed ? 1 : 0);
++})();
