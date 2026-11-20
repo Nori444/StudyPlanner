@@ -1,0 +1,158 @@
+/* ЛБ6: e2e-сценарії TC-14…TC-20, TC-25, TC-26 (Playwright не входить у залежності проєкту).
+ * Запуск:  npm i --no-save playwright && node tests/e2e/lb6.js [каталог-доказів] [--json файл]
+ * Кожний TC виконується в окремому чистому контексті браузера (ізольований localStorage).
+ * Код завершення 1, якщо хоча б один сценарій має статус Fail. */
+const { chromium } = require("playwright");
+const path = require("path");
+const fs = require("fs");
+
+const ROOT = path.resolve(process.env.SP_ROOT || path.join(__dirname, "../.."));
+const PAGE = "file://" + path.join(ROOT, "src/index.html");
+const args = process.argv.slice(2);
+const jsonAt = args.indexOf("--json");
+const JSON_OUT = jsonAt >= 0 ? args.splice(jsonAt, 2)[1] : null;
+const OUT = args[0];
+const KEY = "studyplanner.tasks.v1";
+
+const add = async (p, t, s, d) => { await p.fill("#title", t); await p.fill("#subject", s || ""); await p.fill("#due", d || ""); await p.click("button[type=submit]"); };
+const tasksCount = (p) => p.locator(".task").count();
+const settle = (p) => p.waitForTimeout(150);
+const seed = async (p, list) => { await p.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, list]); await p.reload(); };
+const mk = (i, over) => Object.assign({ id: "id-" + i, title: "Завдання " + i, subject: "ПП", due: "2026-12-01", done: false }, over || {});
+const failWrites = (p) => p.evaluate(() => { window.__orig = Storage.prototype.setItem; Storage.prototype.setItem = function () { throw new DOMException("quota", "QuotaExceededError"); }; });
+const restoreWrites = (p) => p.evaluate(() => { Storage.prototype.setItem = window.__orig; });
+
+const scenarios = [];
+const tc = (id, title, fn) => scenarios.push({ id, title, fn });
+
+tc("TC-14", "Граничні значення назви: 0/1/100/101 символ; emoji рахуються як символи", async (p, c) => {
+  await add(p, "   "); await c("0 символів (пробіли) відхиляється", (await tasksCount(p)) === 0 && await p.locator("#title-error").isVisible());
+  await add(p, "А"); await c("1 символ приймається", (await tasksCount(p)) === 1);
+  await add(p, "б".repeat(100)); await c("100 символів приймається", (await tasksCount(p)) === 2);
+  await add(p, "в".repeat(101)); await c("101 символ відхиляється", (await tasksCount(p)) === 2);
+  await p.fill("#title", "😀".repeat(60)); await p.click("button[type=submit]");
+  const msg = await p.locator("#title-error").innerText().catch(() => "");
+  await c("60 emoji (60 видимих символів) приймається", (await tasksCount(p)) === 3, (await tasksCount(p)) === 3 ? "" : "відхилено: «" + msg + "»");
+  await p.fill("#title", "😀".repeat(101)); await p.click("button[type=submit]");
+  const msg2 = await p.locator("#title-error").innerText();
+  await c("101 emoji відхиляється, у повідомленні «зараз 101»", (await tasksCount(p)) === 3 && msg2.includes("зараз 101"), msg2);
+});
+
+tc("TC-15", "Некоректна дедлайн-дата (5-значний рік): користувач бачить помилку, завдання не зберігається без дати мовчки", async (p, c) => {
+  await p.fill("#title", "Реферат"); await p.fill("#due", "12345-01-01"); await p.click("button[type=submit]");
+  const errVisible = await p.locator("#due-error").isVisible().catch(() => false);
+  const saved = await tasksCount(p);
+  await c("показано повідомлення біля поля дати", errVisible);
+  await c("завдання без дедлайну не створено мовчки", !(saved === 1 && (await p.locator(".task .meta").first().innerText()).includes("Без дедлайну")), "завдань: " + saved);
+  await p.fill("#due", "2026-12-05"); await p.click("button[type=submit]");
+  await c("після виправлення дати завдання додається", (await tasksCount(p)) === 1 && (await p.locator(".task").first().innerText()).includes("05.12.2026"));
+  await c("повідомлення про помилку зникло", !(await p.locator("#due-error").isVisible().catch(() => false)));
+});
+
+tc("TC-16", "Конфлікт: дві вкладки одного профілю не затирають дані одна одної", async (p, c, ctx) => {
+  const b = await ctx.newPage(); await b.goto(PAGE);               // вкладка B відкрита ДО змін у A
+  await add(p, "Із вкладки A");
+  await add(b, "Із вкладки B");
+  await p.reload();
+  const titles = await p.locator(".task strong").allInnerTexts();
+  await c("після змін в обох вкладках збережено обидва завдання", titles.length === 2 && titles.includes("Із вкладки A") && titles.includes("Із вкладки B"), "у списку: " + JSON.stringify(titles));
+  await b.waitForTimeout(200);
+  await c("відкрита вкладка B оновилася без перезавантаження", (await tasksCount(b)) === 2, "у B: " + (await tasksCount(b)));
+  // застаріла вкладка не «воскрешає» видалене
+  await p.locator(".task").first().locator(".delete").click(); await p.click("#confirm-dialog button[value=confirm]"); await settle(p);
+  const left = await tasksCount(p);
+  await b.reload(); await c("видалення в A видно в B після відкриття", (await tasksCount(b)) === left && left === 1);
+});
+
+tc("TC-17", "Цілісність даних: записи в сховищі, що порушують правила, вважаються пошкодженими", async (p, c) => {
+  const cases = [
+    ["назва 5000 символів", [mk(1, { title: "x".repeat(5000) })]],
+    ["порожня назва", [mk(2, { title: "" })]],
+    ["предмет 61 символ", [mk(3, { subject: "п".repeat(61) })]],
+    ["дедлайн «не дата»", [mk(4, { due: "не дата" })]],
+    ["дедлайн 2026-02-30", [mk(5, { due: "2026-02-30" })]],
+  ];
+  for (const [name, list] of cases) {
+    await seed(p, list);
+    const banner = await p.locator("#banner").isVisible();
+    await c(name + ": банер «пошкоджені дані», список порожній", banner && (await tasksCount(p)) === 0, "завдань: " + (await tasksCount(p)));
+  }
+  await seed(p, [mk(6), mk(7, { due: "", subject: undefined })]);
+  await c("коректні записи (дедлайн і предмет можуть бути порожні) завантажуються", (await tasksCount(p)) === 2 && !(await p.locator("#banner").isVisible()));
+});
+
+tc("TC-18", "Лічильник завдань має правильну форму: 1 / 2 / 5 / 11 / 21 / 22", async (p, c) => {
+  const expect = { 1: "1 завдання", 2: "2 завдання", 5: "5 завдань", 11: "11 завдань", 21: "21 завдання", 22: "22 завдання" };
+  for (const [n, text] of Object.entries(expect)) {
+    await seed(p, Array.from({ length: +n }, (_, i) => mk(i)));
+    const got = await p.innerText("#counter");
+    await c(n + " → «" + text + "»", got.startsWith(text + " "), "«" + got + "»");
+  }
+  await seed(p, []); await c("0 → «0 завдань»", (await p.innerText("#counter")).startsWith("0 завдань"));
+});
+
+tc("TC-19", "Повтор критичної операції: подвійний клік «Додати» не створює дубліката", async (p, c) => {
+  await p.fill("#title", "Подвійний клік"); await p.dblclick("button[type=submit]");
+  await c("створено рівно одне завдання", (await tasksCount(p)) === 1, "завдань: " + (await tasksCount(p)));
+  await p.reload(); await c("після перезавантаження також одне", (await tasksCount(p)) === 1);
+});
+
+tc("TC-20", "Граничні значення предмета (60/61) і довгі слова на екрані 375 px", async (p, c) => {
+  await p.setViewportSize({ width: 375, height: 800 });
+  await add(p, "Тест 60", "П".repeat(60)); await c("предмет 60 символів приймається", (await tasksCount(p)) === 1);
+  await add(p, "Тест 61", "П".repeat(61));
+  await c("предмет 61 символ відхиляється з повідомленням", (await tasksCount(p)) === 1 && await p.locator("#subject-error").isVisible());
+  await add(p, "Н".repeat(100), "", "2026-12-31");
+  await c("назва 100 символів без пробілів і предмет 60 не дають горизонтального прокручування", await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+});
+
+tc("TC-25", "Клавіатура: Enter додає, Tab/Enter відкриває діалог, Esc закриває з поверненням фокуса", async (p, c) => {
+  await p.fill("#title", "Клавіатурний сценарій"); await p.press("#title", "Enter");
+  await c("Enter у полі назви додає завдання", (await tasksCount(p)) === 1);
+  await p.locator(".task .delete").focus(); await p.keyboard.press("Enter");
+  await c("Enter на «Видалити» відкриває діалог", await p.locator("#confirm-dialog").evaluate((d) => d.open));
+  await p.keyboard.press("Escape"); await settle(p);
+  await c("Esc закриває діалог, завдання лишається", !(await p.locator("#confirm-dialog").evaluate((d) => d.open)) && (await tasksCount(p)) === 1);
+  await c("фокус повернувся на кнопку «Видалити»", await p.evaluate(() => document.activeElement && document.activeElement.classList.contains("delete")));
+});
+
+tc("TC-26", "Збій запису під час позначення виконаним і видалення: стан не змінюється, є повтор", async (p, c) => {
+  await add(p, "Збій-тест"); await failWrites(p);
+  const box = p.locator(".task input[type=checkbox]").first(); await box.check({ force: true }).catch(() => {});
+  await c("позначення виконаним при збої: банер, прапорець повернуто", (await p.locator("#banner").isVisible()) && !(await box.isChecked()));
+  await p.locator(".task .delete").first().click(); await p.click("#confirm-dialog button[value=confirm]"); await settle(p);
+  await c("видалення при збої: завдання лишається, банер", (await tasksCount(p)) === 1 && await p.locator("#banner").isVisible());
+  await restoreWrites(p); await p.click("#banner button"); await settle(p);
+  await c("«Спробувати ще раз» завершує видалення", (await tasksCount(p)) === 0 && !(await p.locator("#banner").isVisible()));
+  await p.reload(); await c("після перезавантаження завдання немає (збережено)", (await tasksCount(p)) === 0);
+});
+
+(async () => {
+  const browser = await chromium.launch();
+  const results = [];
+  for (const s of scenarios) {
+    const ctx = await browser.newContext({ viewport: { width: 900, height: 800 } });
+    const p = await ctx.newPage();
+    const errors = []; p.on("pageerror", (e) => errors.push(e.message));
+    await p.goto(PAGE); await p.evaluate(() => localStorage.clear()); await p.reload();
+    const checks = [];
+    let shot = false;   // знімок екрана в момент ПЕРШОЇ невідповідності (доказ для дефекту)
+    const c = async (name, ok, extra) => {
+      checks.push({ name, ok: !!ok, extra: extra || "" });
+      if (!ok && OUT && !shot) { shot = true; fs.mkdirSync(OUT, { recursive: true }); await p.screenshot({ path: path.join(OUT, s.id + "_fail.png") }); }
+    };
+    try { await s.fn(p, c, ctx); } catch (e) { await c("виняток під час виконання: " + e.message.split("\n")[0], false); }
+    await c("помилок у консолі немає", errors.length === 0, errors.join("; "));
+    const status = checks.every((x) => x.ok) ? "Pass" : "Fail";
+    if (OUT && status === "Pass") { fs.mkdirSync(OUT, { recursive: true }); await p.screenshot({ path: path.join(OUT, s.id + "_pass.png") }); }
+    console.log("\n" + status.toUpperCase() + " " + s.id + " " + s.title);
+    checks.forEach((x) => console.log("   " + (x.ok ? "ok  " : "FAIL") + " " + x.name + (x.extra ? " — " + x.extra : "")));
+    results.push({ id: s.id, title: s.title, status, checks });
+    await ctx.close();
+  }
+  await browser.close();
+  const failed = results.filter((r) => r.status === "Fail").length;
+  console.log("\nПідсумок: " + (results.length - failed) + "/" + results.length + " сценаріїв Pass");
+  if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify(results, null, 1));
+  process.exit(failed ? 1 : 0);
+})();

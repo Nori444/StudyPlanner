@@ -1,0 +1,8 @@
+{
+  "name": "studyplanner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Навчальний планувальник завдань (MVP)",
+  "scripts": { "test": "node --test", "scan:secrets": "bash scripts/check-secrets.sh", "check:docs": "bash scripts/check-docs.sh" },
+  "engines": { "node": ">=18" }
+}

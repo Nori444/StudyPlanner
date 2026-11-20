@@ -13,13 +13,14 @@
       <h1>Мої навчальні завдання</h1>
       <p class="subtitle">Усі дедлайни в одному місці — крок за кроком.</p>
     </header>
+    <div id="banner" class="banner" role="alert" hidden></div>
     <section class="panel">
       <h2>Додати завдання</h2>
-      <form id="task-form">
-        <label>Назва завдання<input id="title" required maxlength="100" placeholder="Наприклад, лабораторна робота №2"></label>
+      <form id="task-form" novalidate>
+        <label>Назва завдання<input id="title" aria-required="true" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
         <div class="fields">
-          <label>Предмет<input id="subject" maxlength="60" placeholder="Проєктний практикум"></label>
-          <label>Дедлайн<input id="due" type="date"></label>
+          <label>Предмет<input id="subject" aria-describedby="subject-error" placeholder="Проєктний практикум"><span id="subject-error" class="field-error" role="alert" hidden></span></label>
+          <label>Дедлайн<input id="due" type="date" aria-describedby="due-error"><span id="due-error" class="field-error" role="alert" hidden></span></label>
         </div>
         <button type="submit">Додати завдання</button>
       </form>
@@ -31,6 +32,18 @@
     </section>
     <footer>Навчальний проєкт • Індивідуальна робота</footer>
   </main>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Видалити завдання?</h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary" autofocus>Скасувати</button>
+        <button value="confirm" class="danger">Видалити</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="tasks.js"></script>
+  <script src="storage.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
