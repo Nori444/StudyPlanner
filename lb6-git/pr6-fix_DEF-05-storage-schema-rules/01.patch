@@ -1,0 +1,71 @@
+diff --git a/src/index.html b/src/index.html
+index e05ec36..6104eef 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -42,8 +42,8 @@
+       </div>
+     </form>
+   </dialog>
+-  <script src="storage.js"></script>
+   <script src="tasks.js"></script>
++  <script src="storage.js"></script>
+   <script src="app.js"></script>
+ </body>
+ </html>
+diff --git a/src/storage.js b/src/storage.js
+index 4eaf2a0..e0e3804 100644
+--- a/src/storage.js
++++ b/src/storage.js
+@@ -4,6 +4,9 @@
+   if (typeof module === "object" && module.exports) module.exports = api;
+   else root.SP = Object.assign(root.SP || {}, api);
+ })(typeof self !== "undefined" ? self : globalThis, function () {
++  /* Правила предметної області беремо з Task Service (одне джерело правди, DEF-05).
++   * У браузері tasks.js має бути підключений раніше за storage.js. */
++  const T = typeof module === "object" && module.exports ? require("./tasks.js") : globalThis.SP;
+   const KEY = "studyplanner.tasks.v1";
+ 
+   const BACKUP_KEY = KEY + ".backup";
+@@ -13,7 +16,10 @@
+       typeof t.id === "string" && typeof t.title === "string" &&
+       typeof t.done === "boolean" &&
+       (t.subject === undefined || typeof t.subject === "string") &&
+-      (t.due === undefined || typeof t.due === "string");
++      (t.due === undefined || typeof t.due === "string") &&
++      T.validateTitle(t.title).ok &&                      // 1–100 видимих символів
++      T.validateSubject(t.subject).ok &&                  // до 60 символів
++      (t.due === undefined || t.due === "" || T.isValidISODate(t.due));
+   }
+ 
+   function hasDuplicateIds(tasks) {
+diff --git a/tests/storage.test.js b/tests/storage.test.js
+index 786bca5..e4a3ff3 100644
+--- a/tests/storage.test.js
++++ b/tests/storage.test.js
+@@ -54,3 +54,26 @@ test("дублікати id → corrupted (інакше видалення од
+   const store = fakeStore({ [STORAGE_KEY]: JSON.stringify([task({ id: "a" }), task({ id: "a", title: "Інше" })]) });
+   assert.equal(createStorage(store).load().error, "corrupted");
+ });
++
++test("DEF-05: записи, що порушують правила предметної області, → corrupted", () => {
++  const bad = {
++    "назва 101 символ": task({ title: "а".repeat(101) }),
++    "порожня назва": task({ title: "   " }),
++    "предмет 61 символ": task({ subject: "п".repeat(61) }),
++    "дедлайн не дата": task({ due: "не дата" }),
++    "дедлайн 2026-02-30": task({ due: "2026-02-30" }),
++    "дедлайн із пробілами": task({ due: " 2026-11-30 " }),
++  };
++  for (const [name, t] of Object.entries(bad)) {
++    const store = fakeStore({ [STORAGE_KEY]: JSON.stringify([t]) });
++    const r = createStorage(store).load();
++    assert.equal(r.error, "corrupted", name);
++    assert.equal(store.data[BACKUP_KEY], JSON.stringify([t]), name + ": копія збережена");
++  }
++});
++test("DEF-05: коректні межі приймаються (100 символів назви, 60 предмета, порожні предмет і дедлайн)", () => {
++  const list = [task({ id: "a", title: "а".repeat(100), subject: "п".repeat(60) }), task({ id: "b", subject: "", due: "" }), { id: "c", title: "Без полів", done: true }];
++  const r = createStorage(fakeStore({ [STORAGE_KEY]: JSON.stringify(list) })).load();
++  assert.equal(r.error, null);
++  assert.equal(r.tasks.length, 3);
++});

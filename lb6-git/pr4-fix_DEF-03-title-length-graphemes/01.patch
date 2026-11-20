@@ -1,0 +1,74 @@
+diff --git a/src/tasks.js b/src/tasks.js
+index db7191a..f739018 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -7,12 +7,25 @@
+   const TITLE_MAX = 100;
+   const SUBJECT_MAX = 60;
+ 
++  /** Кількість символів, які бачить користувач (DEF-03): графеми, а за відсутності Intl.Segmenter — кодові точки.
++   *  String.length рахує UTF-16 одиниці, тому «😀» мав довжину 2. */
++  function charLength(str) {
++    const s = String(str == null ? "" : str);
++    if (typeof Intl === "object" && typeof Intl.Segmenter === "function") {
++      let n = 0;
++      for (const _ of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)) n++;
++      return n;
++    }
++    return Array.from(s).length;
++  }
++
+   /** Назва: після trim() від 1 до 100 символів. */
+   function validateTitle(raw) {
+     const value = String(raw == null ? "" : raw).trim();
+-    if (value.length === 0) return { ok: false, error: "Введіть назву завдання." };
+-    if (value.length > TITLE_MAX) {
+-      return { ok: false, error: "Назва має містити від 1 до " + TITLE_MAX + " символів (зараз " + value.length + ")." };
++    const length = charLength(value);
++    if (length === 0) return { ok: false, error: "Введіть назву завдання." };
++    if (length > TITLE_MAX) {
++      return { ok: false, error: "Назва має містити від 1 до " + TITLE_MAX + " символів (зараз " + length + ")." };
+     }
+     return { ok: true, value };
+   }
+@@ -20,7 +33,7 @@
+   /** Предмет необов'язковий: до 60 символів після trim(). */
+   function validateSubject(raw) {
+     const value = String(raw == null ? "" : raw).trim();
+-    if (value.length > SUBJECT_MAX) {
++    if (charLength(value) > SUBJECT_MAX) {
+       return { ok: false, error: "Назва предмета має містити не більше " + SUBJECT_MAX + " символів." };
+     }
+     return { ok: true, value };
+@@ -75,5 +88,5 @@
+     return !task.done && isValidISODate(task.due) && task.due < (today || todayISO());
+   }
+ 
+-  return { validateTitle, validateSubject, validateDue, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
++  return { charLength, validateTitle, validateSubject, validateDue, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index fab6c7b..76cb08f 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -95,3 +95,20 @@ test("validateDue: порожній дедлайн дозволений, кор
+   assert.deepEqual(validateDue("2028-02-29"), { ok: true, value: "2028-02-29" });
+   assert.equal(validateDue("2027-02-29").ok, false);
+ });
++
++const { charLength } = require("../src/tasks.js");
++test("DEF-03: charLength рахує видимі символи, а не UTF-16 одиниці", () => {
++  assert.equal(charLength("абв"), 3);
++  assert.equal(charLength("😀"), 1);
++  assert.equal(charLength("😀".repeat(60)), 60);
++  assert.equal(charLength("👨‍👩‍👧"), 1); // складена емодзі (ZWJ) — один символ
++  assert.equal(charLength(undefined), 0);
++});
++test("DEF-03: 100 емодзі приймається, 101 — ні; у повідомленні справжня довжина", () => {
++  assert.equal(validateTitle("😀".repeat(100)).ok, true);
++  const bad = validateTitle("😀".repeat(101));
++  assert.equal(bad.ok, false);
++  assert.match(bad.error, /зараз 101/);
++  assert.equal(validateSubject("🎓".repeat(60)).ok, true);
++  assert.equal(validateSubject("🎓".repeat(61)).ok, false);
++});

@@ -1,0 +1,66 @@
+diff --git a/src/app.js b/src/app.js
+index 9d7405b..0e5c9db 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -23,15 +23,20 @@ function showBanner(message, retry){
+ }
+ function hideBanner(){ banner.hidden = true; banner.textContent = ""; }
+ 
+-/* Зберігає новий стан; список змінюється лише після успішного запису */
+-function commit(next){
++/* Застосовує зміну до АКТУАЛЬНОГО стану сховища, а не до застарілої копії в пам'яті,
++   тому дві вкладки не затирають дані одна одної (DEF-01).
++   change: (поточний список) => новий список. Список змінюється лише після успішного запису. */
++function commit(change){
++  const fresh = storage.load();
++  const next = change(fresh.error ? tasks : fresh.tasks);
+   const result = storage.save(next);
+   if(result.ok){ tasks = next; hideBanner(); render(); return true; }
+-  showBanner("Не вдалося зберегти зміни в браузері. Список не змінено.", () => commit(next));
++  showBanner("Не вдалося зберегти зміни в браузері. Список не змінено.", () => commit(change));
+   return false;
+ }
+ 
+-if(loaded.error === "corrupted") showBanner("Збережені дані пошкоджені, тому список порожній. Копію збережено в браузері.");
++const CORRUPTED_MESSAGE = "Збережені дані пошкоджені, тому список порожній. Копію збережено в браузері.";
++if(loaded.error === "corrupted") showBanner(CORRUPTED_MESSAGE);
+ if(loaded.error === "unavailable") showBanner("Сховище браузера недоступне, тому додавати й змінювати завдання зараз не можна. Перевірте налаштування приватності браузера.");
+ function render(){
+   list.innerHTML = "";
+@@ -46,7 +51,8 @@ function render(){
+     check.type = "checkbox"; check.checked = task.done;
+     check.setAttribute("aria-label","Позначити виконаним: " + task.title);
+     check.addEventListener("change", () => {
+-      if(!commit(tasks.map(t => t.id === task.id ? { ...t, done: check.checked } : t))) check.checked = task.done;
++      const wanted = check.checked;
++      if(!commit(current => current.map(t => t.id === task.id ? { ...t, done: wanted } : t))) check.checked = task.done;
+     });
+     const info = document.createElement("div"); info.className = "info";
+     const title = document.createElement("strong"); title.textContent = task.title;
+@@ -77,7 +83,7 @@ dialog.addEventListener("close", () => {
+   if(dialog.returnValue === "confirm" && deleteTarget){
+     const id = deleteTarget.id;
+     const index = tasks.findIndex(t => t.id === id);
+-    if(commit(tasks.filter(t => t.id !== id))){
++    if(commit(current => current.filter(t => t.id !== id))){
+       /* фокус не губимо: наступний елемент списку, інакше поле назви */
+       const buttons = list.querySelectorAll(".delete");
+       (buttons[Math.min(index, buttons.length - 1)] || titleInput).focus();
+@@ -108,7 +114,16 @@ form.addEventListener("submit", e => {
+   setFieldError(titleInput, titleError, result.ok ? "" : result.errors.title);
+   setFieldError(subjectInput, subjectError, result.ok ? "" : result.errors.subject);
+   if(!result.ok){ (result.errors.title ? titleInput : subjectInput).focus(); return; }
+-  if(commit([result.task, ...tasks])) form.reset();
++  if(commit(current => [result.task, ...current])) form.reset();
++});
++/* Зміни з іншої вкладки: оновлюємо список без перезавантаження (DEF-01, SP-13) */
++window.addEventListener("storage", e => {
++  if(e.key !== null && e.key !== SP.STORAGE_KEY) return;
++  const fresh = storage.load();
++  if(fresh.error === "unavailable") return;
++  tasks = fresh.tasks;
++  if(fresh.error === "corrupted") showBanner(CORRUPTED_MESSAGE);
++  render();
+ });
+ titleInput.addEventListener("input", () => setFieldError(titleInput, titleError, ""));
+ subjectInput.addEventListener("input", () => setFieldError(subjectInput, subjectError, ""));

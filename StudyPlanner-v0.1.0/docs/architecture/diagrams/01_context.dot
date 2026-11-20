@@ -1,0 +1,25 @@
+digraph G {
+  rankdir=TB; fontname="Inter"; nodesep=0.6; ranksep=0.9; bgcolor="white"; pad=0.3;
+  node [fontname="Inter", fontsize=13, style="filled,rounded", shape=box, color="#5265c9", fillcolor="#eef0ff", margin="0.25,0.15"];
+  edge [fontname="Inter", fontsize=11, color="#535c73", arrowsize=0.8];
+
+  student [label="Студент\n(єдина роль MVP)", shape=box, fillcolor="#fff4d6", color="#c79a1e"];
+
+  subgraph cluster_sys {
+    label="Межа системи StudyPlanner"; labeljust=l; fontsize=13; style="dashed,rounded"; color="#5265c9"; fontcolor="#3f51b5"; margin=24;
+    sys [label="StudyPlanner\nвебзастосунок для планування\nнавчальних завдань", fillcolor="#dfe4ff", fontsize=14, width=3.0, height=1.2];
+  }
+
+  storage [label="Web Storage браузера\n(localStorage)", fillcolor="#e8f6ee", color="#2f9e63"];
+  hosting [label="GitHub / GitHub Pages\n(хостинг статичних файлів)", fillcolor="#e8f6ee", color="#2f9e63"];
+  dev     [label="Розробниця\n(Ніка Семенових)", fillcolor="#fff4d6", color="#c79a1e"];
+  cal     [label="Google Calendar\n(поза межами MVP)", fillcolor="#f3f3f3", color="#999999", fontcolor="#777777", style="filled,rounded,dashed"];
+
+  {rank=same; student; dev}
+  {rank=same; storage; hosting; cal}
+  student -> sys [dir=both, label="  дії: додати, позначити, видалити  \n  відповіді: список, помилки, успіх  ", minlen=2];
+  sys -> storage [label="збереження / читання\nзавдань (JSON)"];
+  hosting -> sys [label="HTML, CSS, JS\n(HTTPS)"];
+  dev -> hosting [label="git push"];
+  sys -> cal [label="синхронізація\n(майбутнє)", style=dashed, color="#999999", fontcolor="#777777"];
+}

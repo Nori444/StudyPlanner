@@ -1,0 +1,112 @@
+diff --git a/src/app.js b/src/app.js
+index 0e5c9db..cb44226 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -100,6 +100,8 @@ const titleInput = document.querySelector("#title");
+ const titleError = document.querySelector("#title-error");
+ const subjectInput = document.querySelector("#subject");
+ const subjectError = document.querySelector("#subject-error");
++const dueInput = document.querySelector("#due");
++const dueError = document.querySelector("#due-error");
+ 
+ function setFieldError(input, el, message){
+   el.textContent = message || "";
+@@ -110,10 +112,11 @@ function makeId(){ return crypto.randomUUID ? crypto.randomUUID() : Date.now() +
+ 
+ form.addEventListener("submit", e => {
+   e.preventDefault();
+-  const result = SP.createTask({ title: titleInput.value, subject: subjectInput.value, due: document.querySelector("#due").value }, makeId);
++  const result = SP.createTask({ title: titleInput.value, subject: subjectInput.value, due: dueInput.value }, makeId);
+   setFieldError(titleInput, titleError, result.ok ? "" : result.errors.title);
+   setFieldError(subjectInput, subjectError, result.ok ? "" : result.errors.subject);
+-  if(!result.ok){ (result.errors.title ? titleInput : subjectInput).focus(); return; }
++  setFieldError(dueInput, dueError, result.ok ? "" : result.errors.due);
++  if(!result.ok){ (result.errors.title ? titleInput : result.errors.subject ? subjectInput : dueInput).focus(); return; }
+   if(commit(current => [result.task, ...current])) form.reset();
+ });
+ /* Зміни з іншої вкладки: оновлюємо список без перезавантаження (DEF-01, SP-13) */
+@@ -127,4 +130,5 @@ window.addEventListener("storage", e => {
+ });
+ titleInput.addEventListener("input", () => setFieldError(titleInput, titleError, ""));
+ subjectInput.addEventListener("input", () => setFieldError(subjectInput, subjectError, ""));
++dueInput.addEventListener("input", () => setFieldError(dueInput, dueError, ""));
+ render();
+diff --git a/src/index.html b/src/index.html
+index 274dab4..e05ec36 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -20,7 +20,7 @@
+         <label>Назва завдання<input id="title" aria-required="true" aria-describedby="title-error" placeholder="Наприклад, лабораторна робота №2"><span id="title-error" class="field-error" role="alert" hidden></span></label>
+         <div class="fields">
+           <label>Предмет<input id="subject" aria-describedby="subject-error" placeholder="Проєктний практикум"><span id="subject-error" class="field-error" role="alert" hidden></span></label>
+-          <label>Дедлайн<input id="due" type="date"></label>
++          <label>Дедлайн<input id="due" type="date" aria-describedby="due-error"><span id="due-error" class="field-error" role="alert" hidden></span></label>
+         </div>
+         <button type="submit">Додати завдання</button>
+       </form>
+diff --git a/src/tasks.js b/src/tasks.js
+index 3ee7c5e..db7191a 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -26,16 +26,25 @@
+     return { ok: true, value };
+   }
+ 
+-  /** Створює завдання або повертає помилки валідації. */
++  /** Дедлайн необов'язковий; якщо задано, то це календарно коректна дата РРРР-ММ-ДД (рік із 4 цифр). */
++  function validateDue(raw) {
++    const value = String(raw == null ? "" : raw).trim();
++    if (value === "") return { ok: true, value: "" };
++    if (!isValidISODate(value)) return { ok: false, error: "Дата некоректна: перевірте день, місяць і рік (рік має містити 4 цифри)." };
++    return { ok: true, value };
++  }
++
++  /** Створює завдання або повертає помилки валідації (по полях). */
+   function createTask(input, makeId) {
+     const title = validateTitle(input.title);
+     const subject = validateSubject(input.subject);
+-    if (!title.ok || !subject.ok) {
+-      return { ok: false, errors: { title: title.ok ? null : title.error, subject: subject.ok ? null : subject.error } };
++    const due = validateDue(input.due);
++    if (!title.ok || !subject.ok || !due.ok) {
++      return { ok: false, errors: { title: title.ok ? null : title.error, subject: subject.ok ? null : subject.error, due: due.ok ? null : due.error } };
+     }
+     return {
+       ok: true,
+-      task: { id: makeId(), title: title.value, subject: subject.value, due: isValidISODate(input.due) ? input.due : "", done: false },
++      task: { id: makeId(), title: title.value, subject: subject.value, due: due.value, done: false },
+     };
+   }
+ 
+@@ -66,5 +75,5 @@
+     return !task.done && isValidISODate(task.due) && task.due < (today || todayISO());
+   }
+ 
+-  return { validateTitle, validateSubject, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
++  return { validateTitle, validateSubject, validateDue, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index 64a4ab9..fab6c7b 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -80,6 +80,18 @@ test("formatDate і isOverdue ігнорують некоректну дату",
+   assert.equal(formatDate("2026-13-45"), "");
+   assert.equal(isOverdue({ due: "2026-13-45", done: false }, "2026-11-19"), false);
+ });
+-test("createTask: некоректний дедлайн не зберігається", () => {
+-  assert.equal(createTask({ title: "А", due: "2026-13-45" }, () => "i").task.due, "");
++test("DEF-02: createTask відхиляє некоректний дедлайн з повідомленням, а не мовчки його відкидає", () => {
++  for (const bad of ["2026-13-45", "2026-02-30", "12345-01-01", "26-1-1", "не дата"]) {
++    const r = createTask({ title: "А", due: bad }, () => "i");
++    assert.equal(r.ok, false, bad);
++    assert.match(r.errors.due, /Дата некоректна/);
++    assert.equal(r.errors.title, null);
++  }
++});
++const { validateDue } = require("../src/tasks.js");
++test("validateDue: порожній дедлайн дозволений, коректна дата приймається", () => {
++  assert.deepEqual(validateDue(""), { ok: true, value: "" });
++  assert.deepEqual(validateDue(undefined), { ok: true, value: "" });
++  assert.deepEqual(validateDue("2028-02-29"), { ok: true, value: "2028-02-29" });
++  assert.equal(validateDue("2027-02-29").ok, false);
+ });

@@ -1,0 +1,52 @@
+diff --git a/src/app.js b/src/app.js
+index cb44226..38b029f 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -42,7 +42,7 @@ function render(){
+   list.innerHTML = "";
+   empty.hidden = tasks.length > 0;
+   const done = tasks.filter(t => t.done).length;
+-  counter.textContent = `${tasks.length} завдань • виконано ${done}`;
++  counter.textContent = `${SP.taskCountLabel(tasks.length)} • виконано ${done}`;
+   const today = SP.todayISO();
+   tasks.forEach(task => {
+     const li = document.createElement("li");
+diff --git a/src/tasks.js b/src/tasks.js
+index f739018..845f73f 100644
+--- a/src/tasks.js
++++ b/src/tasks.js
+@@ -82,11 +82,18 @@
+     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+   }
+ 
++  /** Українська форма слова «завдання» за числом: 1 завдання, 2–4 завдання, 5–20 завдань, 21 завдання (DEF-04). */
++  function taskCountLabel(n) {
++    const mod100 = n % 100, mod10 = n % 10;
++    const form = mod100 >= 11 && mod100 <= 14 ? "завдань" : mod10 === 1 ? "завдання" : mod10 >= 2 && mod10 <= 4 ? "завдання" : "завдань";
++    return n + " " + form;
++  }
++
+   /** Прострочено: є дедлайн, він раніше за сьогодні, завдання не виконано.
+    *  Дати порівнюються як рядки РРРР-ММ-ДД, тому часовий пояс не впливає. */
+   function isOverdue(task, today) {
+     return !task.done && isValidISODate(task.due) && task.due < (today || todayISO());
+   }
+ 
+-  return { charLength, validateTitle, validateSubject, validateDue, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
++  return { taskCountLabel, charLength, validateTitle, validateSubject, validateDue, createTask, formatDate, isValidISODate, todayISO, isOverdue, TITLE_MAX, SUBJECT_MAX };
+ });
+diff --git a/tests/tasks.test.js b/tests/tasks.test.js
+index 76cb08f..816f2de 100644
+--- a/tests/tasks.test.js
++++ b/tests/tasks.test.js
+@@ -112,3 +112,10 @@ test("DEF-03: 100 емодзі приймається, 101 — ні; у пові
+   assert.equal(validateSubject("🎓".repeat(60)).ok, true);
+   assert.equal(validateSubject("🎓".repeat(61)).ok, false);
+ });
++
++const { taskCountLabel } = require("../src/tasks.js");
++test("DEF-04: форма слова «завдання» за числом (SP-12)", () => {
++  const expected = { 0: "0 завдань", 1: "1 завдання", 2: "2 завдання", 4: "4 завдання", 5: "5 завдань", 11: "11 завдань", 12: "12 завдань", 14: "14 завдань",
++    20: "20 завдань", 21: "21 завдання", 22: "22 завдання", 25: "25 завдань", 101: "101 завдання", 111: "111 завдань" };
++  for (const [n, text] of Object.entries(expected)) assert.equal(taskCountLabel(+n), text, String(n));
++});
